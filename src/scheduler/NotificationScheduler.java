@@ -10,7 +10,6 @@ import java.util.List;
 import java.util.concurrent.Executors;
 import java.util.concurrent.ScheduledExecutorService;
 import java.util.concurrent.TimeUnit;
-import java.util.function.BiConsumer;
 
 public class NotificationScheduler {
 
@@ -18,16 +17,17 @@ public class NotificationScheduler {
 
     private final WordRepository wordRepository;
     private final SettingsRepository settingsRepository;
-    private final BiConsumer<List<Word>, Integer> aoNotificar;
+    private final NotificationCallback aoNotificar;
 
     private List<Word> palavras;
     private Settings settings;
     private int indiceAtual = 0;
     private int ciclosCompletos = 0;
+    private volatile boolean pausado = true;
 
     private ScheduledExecutorService executor;
 
-    public NotificationScheduler(WordRepository wordRepository, SettingsRepository settingsRepository, BiConsumer<List<Word>, Integer> aoNotificar) {
+    public NotificationScheduler(WordRepository wordRepository, SettingsRepository settingsRepository, NotificationCallback aoNotificar) {
         this.wordRepository = wordRepository;
         this.settingsRepository = settingsRepository;
         this.aoNotificar = aoNotificar;
@@ -42,13 +42,24 @@ public class NotificationScheduler {
             return;
         }
 
-        long intervaloSegundos = settings.getIntervaloNotificacoes().toSeconds();
-
+        pausado = false;
         executor = Executors.newSingleThreadScheduledExecutor();
-        executor.scheduleAtFixedRate(this::tick, intervaloSegundos, intervaloSegundos, TimeUnit.SECONDS);
+        agendarProximaRodada(settings.getIntervaloNotificacoes().toSeconds());
     }
 
-    private void tick() {
+    private void agendarProximaRodada(long atrasoSegundos) {
+        if (pausado || executor == null || executor.isShutdown()) {
+            return;
+        }
+        executor.schedule(this::avancarOuIniciarRodada, atrasoSegundos, TimeUnit.SECONDS);
+    }
+
+    /** Mostra as palavras da lista em sequência: cada notificação, ao fechar, dispara a próxima. */
+    private void avancarOuIniciarRodada() {
+        if (pausado) {
+            return;
+        }
+
         if (ciclosCompletos >= MAX_CICLOS) {
             System.out.println("Ciclo máximo atingido (" + MAX_CICLOS + "x). Notificações pausadas.");
             parar();
@@ -56,16 +67,27 @@ public class NotificationScheduler {
         }
 
         if (estaNoHorarioDeSilencio()) {
-            System.out.println("Dentro do horário de silêncio. Notificação pulada.");
+            System.out.println("Dentro do horário de silêncio. Rodada adiada.");
+            agendarProximaRodada(settings.getIntervaloNotificacoes().toSeconds());
             return;
         }
 
-        aoNotificar.accept(palavras, indiceAtual);
+        boolean ultimaDaRodada = indiceAtual == palavras.size() - 1;
+        aoNotificar.notificar(palavras, indiceAtual, () -> aoNotificacaoFechada(ultimaDaRodada));
+    }
 
-        indiceAtual++;
-        if (indiceAtual >= palavras.size()) {
+    private void aoNotificacaoFechada(boolean ultimaDaRodada) {
+        if (pausado) {
+            return;
+        }
+
+        if (ultimaDaRodada) {
             indiceAtual = 0;
             ciclosCompletos++;
+            agendarProximaRodada(settings.getIntervaloNotificacoes().toSeconds());
+        } else {
+            indiceAtual++;
+            avancarOuIniciarRodada();
         }
     }
 
@@ -87,8 +109,18 @@ public class NotificationScheduler {
     }
 
     public void parar() {
+        pausado = true;
         if (executor != null) {
             executor.shutdown();
+        }
+    }
+
+    /** Reaplica as configurações salvas (ex.: novo intervalo) reiniciando o agendamento. */
+    public void aplicarConfiguracoesAtualizadas() {
+        boolean estavaRodando = executor != null && !executor.isShutdown();
+        parar();
+        if (estavaRodando) {
+            iniciar();
         }
     }
 }

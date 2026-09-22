@@ -1,6 +1,7 @@
 package tray;
 
 import scheduler.NotificationScheduler;
+import ui.MainWindow;
 
 import java.awt.*;
 import java.awt.image.BufferedImage;
@@ -8,12 +9,14 @@ import java.awt.image.BufferedImage;
 public class TrayIconManager {
 
     private final NotificationScheduler scheduler;
+    private final MainWindow mainWindow;
     private TrayIcon trayIcon;
     private MenuItem itemPausarRetomar;
     private boolean pausado = false;
 
-    public TrayIconManager(NotificationScheduler scheduler) {
+    public TrayIconManager(NotificationScheduler scheduler, MainWindow mainWindow) {
         this.scheduler = scheduler;
+        this.mainWindow = mainWindow;
     }
 
     public void exibir() {
@@ -23,8 +26,12 @@ public class TrayIconManager {
         }
 
         SystemTray tray = SystemTray.getSystemTray();
-
         PopupMenu menu = new PopupMenu();
+
+        MenuItem itemAbrir = new MenuItem("Abrir Notify");
+        itemAbrir.addActionListener(e -> mainWindow.setVisible(true));
+        menu.add(itemAbrir);
+        menu.addSeparator();
 
         itemPausarRetomar = new MenuItem("Pausar notificações");
         itemPausarRetomar.addActionListener(e -> alternarPausa());
@@ -36,6 +43,7 @@ public class TrayIconManager {
 
         trayIcon = new TrayIcon(criarIcone(), "Notify", menu);
         trayIcon.setImageAutoSize(true);
+        trayIcon.addActionListener(e -> mainWindow.setVisible(true)); // duplo clique no ícone
 
         try {
             tray.add(trayIcon);

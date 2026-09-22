@@ -19,15 +19,23 @@ public class NotificationToast extends JWindow {
 
     private final List<Word> palavras;
     private int indiceAtual;
+    private final Runnable aoFechar;
 
     private final JLabel labelTermo;
     private final JLabel labelTraducao;
     private boolean traducaoRevelada = false;
+    private boolean fechando = false;
     private Timer timerFechamento;
 
-    public NotificationToast(List<Word> palavras, int indiceInicial) {
+    /**
+     * @param aoFechar chamado uma única vez, quando a notificação termina de fechar
+     *                 (automaticamente ou por ação do usuário) — usado para encadear a próxima
+     *                 palavra da rodada. Pode ser {@code null}.
+     */
+    public NotificationToast(List<Word> palavras, int indiceInicial, Runnable aoFechar) {
         this.palavras = palavras;
         this.indiceAtual = indiceInicial;
+        this.aoFechar = aoFechar;
 
         setLayout(new BorderLayout());
         setSize(LARGURA, ALTURA);
@@ -204,6 +212,11 @@ public class NotificationToast extends JWindow {
     }
 
     private void fecharComFade() {
+        if (fechando) {
+            return;
+        }
+        fechando = true;
+
         if (timerFechamento != null) {
             timerFechamento.stop();
         }
@@ -214,6 +227,9 @@ public class NotificationToast extends JWindow {
                 setOpacity(0f);
                 timer.stop();
                 dispose();
+                if (aoFechar != null) {
+                    aoFechar.run();
+                }
             } else {
                 setOpacity(nova);
             }
